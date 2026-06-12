@@ -1,6 +1,8 @@
 spring:
   application:
     name: cargotrack
+  profiles:
+    default: dev
 
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:cargotrack}
@@ -27,3 +29,25 @@ management:
     health:
       probes:
         enabled: true
+
+app:
+  jwt:
+    # В prod секрет ОБЯЗАН приходить из переменной окружения JWT_SECRET
+    secret: ${JWT_SECRET:cargotrack-dev-only-secret-0123456789-abcdefghijklmnopqrstuvwxyz-0123456789}
+    access-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-ttl: ${JWT_REFRESH_TTL:14d}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+# Swagger UI выключен в prod (SDP, чек-лист 5.7)
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

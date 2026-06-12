@@ -1,6 +1,13 @@
 <mat-toolbar color="primary" class="app-toolbar">
   <mat-icon>local_shipping</mat-icon>
   <span class="app-title">{{ title() }}</span>
+  <span class="toolbar-spacer"></span>
+  @if (auth.currentUser(); as user) {
+    <span class="user-name">{{ user.firstName }} ({{ user.role }})</span>
+    <button matIconButton (click)="auth.logout()" aria-label="Выйти" title="Выйти">
+      <mat-icon>logout</mat-icon>
+    </button>
+  }
 </mat-toolbar>
 
 <main class="app-content">

@@ -1,6 +1,10 @@
 <mat-toolbar color="primary" class="app-toolbar">
   <mat-icon>local_shipping</mat-icon>
   <span class="app-title">{{ title() }}</span>
+  <a matButton routerLink="/track" class="track-link">
+    <mat-icon>travel_explore</mat-icon>
+    Отследить
+  </a>
   <span class="toolbar-spacer"></span>
   @if (auth.currentUser(); as user) {
     <span class="user-name">{{ user.firstName }} ({{ user.role }})</span>

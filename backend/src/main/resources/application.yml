@@ -38,6 +38,10 @@ app:
     refresh-ttl: ${JWT_REFRESH_TTL:14d}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  pricing:
+    base: ${PRICING_BASE:5.00}       # EUR за оформление
+    per-kg: ${PRICING_PER_KG:0.50}   # EUR за кг тарифного веса
+    per-km: ${PRICING_PER_KM:0.05}   # EUR за км маршрута
 
 ---
 spring:

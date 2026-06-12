@@ -13,13 +13,35 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/register').then((m) => m.Register),
     canActivate: [guestGuard],
   },
-  // Домашние разделы ролей — наполняются в следующих фазах
+  // Публичный трекинг — доступен без логина
+  {
+    path: 'track',
+    loadComponent: () => import('./features/public-tracking/tracking-page').then((m) => m.TrackingPage),
+  },
+  {
+    path: 'track/:number',
+    loadComponent: () => import('./features/public-tracking/tracking-page').then((m) => m.TrackingPage),
+  },
+  // USER: посылки
   {
     path: 'parcels',
-    loadComponent: () => import('./shared/coming-soon').then((m) => m.ComingSoon),
     canActivate: [authGuard, roleGuard(['USER'])],
-    data: { title: 'Мои посылки' },
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./features/user/parcel-list').then((m) => m.ParcelList),
+      },
+      {
+        path: 'new',
+        loadComponent: () => import('./features/user/parcel-create').then((m) => m.ParcelCreate),
+      },
+      {
+        path: ':id',
+        loadComponent: () => import('./features/user/parcel-detail').then((m) => m.ParcelDetailPage),
+      },
+    ],
   },
+  // Разделы остальных ролей — наполняются в следующих фазах
   {
     path: 'driver',
     loadComponent: () => import('./shared/coming-soon').then((m) => m.ComingSoon),

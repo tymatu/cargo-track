@@ -27,6 +27,9 @@ public enum ParcelStatus {
             CANCELLED, EnumSet.noneOf(ParcelStatus.class));  // терминальный
 
     public boolean canTransitionTo(ParcelStatus target) {
+        if (target == null) {
+            return false;
+        }
         return ALLOWED.get(this).contains(target);
     }
 }

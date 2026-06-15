@@ -1,5 +1,6 @@
 package com.cargotrack.auth;
 
+import com.cargotrack.common.EmailNormalizer;
 import com.cargotrack.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -15,8 +16,9 @@ public class DbUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        return userRepository.findByEmail(email)
+        String normalizedEmail = EmailNormalizer.normalize(email);
+        return userRepository.findByEmail(normalizedEmail)
                 .map(UserPrincipal::from)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + normalizedEmail));
     }
 }

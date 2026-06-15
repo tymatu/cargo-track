@@ -1,6 +1,6 @@
 import { DecimalPipe } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -10,9 +10,11 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepperModule } from '@angular/material/stepper';
 import { Router } from '@angular/router';
+import { merge } from 'rxjs';
 import { CreateParcelRequest, PriceQuote } from '../../core/api/models';
 import { ParcelsService } from '../../core/api/parcels.service';
 import { WarehousesService } from '../../core/api/warehouses.service';
+import { apiErrorMessage } from '../../shared/api-error';
 
 /** Stepper создания посылки: маршрут и получатель → габариты → подтверждение с ценой (SDP, 10.2). */
 @Component({
@@ -176,38 +178,85 @@ export class ParcelCreate {
     declaredValue: [null as number | null, Validators.min(0)],
   });
 
+  constructor() {
+    merge(
+      this.routeForm.controls.originWarehouseId.valueChanges,
+      this.routeForm.controls.destinationWarehouseId.valueChanges,
+      this.sizeForm.valueChanges,
+    ).pipe(takeUntilDestroyed()).subscribe(() => {
+      this.quote.set(null);
+      this.error.set(null);
+    });
+
+    this.routeForm.controls.originWarehouseId.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe((originWarehouseId) => {
+        if (originWarehouseId === this.routeForm.controls.destinationWarehouseId.value) {
+          this.routeForm.controls.destinationWarehouseId.reset();
+        }
+      });
+  }
+
   protected fetchQuote(): void {
     this.quote.set(null);
+    this.error.set(null);
+    const route = this.routeForm.getRawValue();
+    const size = this.sizeForm.getRawValue();
+    if (
+      this.routeForm.invalid ||
+      this.sizeForm.invalid ||
+      route.originWarehouseId === null ||
+      route.destinationWarehouseId === null ||
+      size.weightKg === null
+    ) {
+      this.error.set('Заполните маршрут, получателя и вес посылки');
+      return;
+    }
+    const request = {
+      originWarehouseId: route.originWarehouseId,
+      destinationWarehouseId: route.destinationWarehouseId,
+      weightKg: size.weightKg,
+      lengthCm: size.lengthCm ?? undefined,
+      widthCm: size.widthCm ?? undefined,
+      heightCm: size.heightCm ?? undefined,
+    };
     this.parcels
-      .calculatePrice({
-        originWarehouseId: this.routeForm.value.originWarehouseId!,
-        destinationWarehouseId: this.routeForm.value.destinationWarehouseId!,
-        weightKg: this.sizeForm.value.weightKg!,
-        lengthCm: this.sizeForm.value.lengthCm ?? undefined,
-        widthCm: this.sizeForm.value.widthCm ?? undefined,
-        heightCm: this.sizeForm.value.heightCm ?? undefined,
-      })
+      .calculatePrice(request)
       .subscribe({
-        next: (quote) => this.quote.set(quote),
-        error: (err) => this.error.set(err?.error?.detail ?? 'Не удалось рассчитать цену'),
+        next: (quote) => {
+          if (this.matchesQuoteRequest(request)) {
+            this.quote.set(quote);
+          }
+        },
+        error: (err) => this.error.set(apiErrorMessage(err, 'Не удалось рассчитать цену')),
       });
   }
 
   protected submit(): void {
-    if (this.submitting()) {
+    if (this.submitting() || !this.quote()) {
       return;
     }
-    this.submitting.set(true);
     this.error.set(null);
     const route = this.routeForm.getRawValue();
     const size = this.sizeForm.getRawValue();
+    if (
+      this.routeForm.invalid ||
+      this.sizeForm.invalid ||
+      route.originWarehouseId === null ||
+      route.destinationWarehouseId === null ||
+      size.weightKg === null
+    ) {
+      this.error.set('Заполните маршрут, получателя и вес посылки');
+      return;
+    }
+    this.submitting.set(true);
     const request: CreateParcelRequest = {
-      originWarehouseId: route.originWarehouseId!,
-      destinationWarehouseId: route.destinationWarehouseId!,
+      originWarehouseId: route.originWarehouseId,
+      destinationWarehouseId: route.destinationWarehouseId,
       recipientName: route.recipientName,
       recipientPhone: route.recipientPhone,
       recipientEmail: route.recipientEmail || undefined,
-      weightKg: size.weightKg!,
+      weightKg: size.weightKg,
       lengthCm: size.lengthCm ?? undefined,
       widthCm: size.widthCm ?? undefined,
       heightCm: size.heightCm ?? undefined,
@@ -220,8 +269,24 @@ export class ParcelCreate {
       },
       error: (err) => {
         this.submitting.set(false);
-        this.error.set(err?.error?.detail ?? 'Не удалось создать посылку');
+        this.error.set(apiErrorMessage(err, 'Не удалось создать посылку'));
       },
     });
+  }
+
+  private matchesQuoteRequest(request: {
+    originWarehouseId: number;
+    destinationWarehouseId: number;
+    weightKg: number;
+    lengthCm?: number;
+    widthCm?: number;
+    heightCm?: number;
+  }): boolean {
+    return this.routeForm.value.originWarehouseId === request.originWarehouseId
+      && this.routeForm.value.destinationWarehouseId === request.destinationWarehouseId
+      && this.sizeForm.value.weightKg === request.weightKg
+      && (this.sizeForm.value.lengthCm ?? undefined) === request.lengthCm
+      && (this.sizeForm.value.widthCm ?? undefined) === request.widthCm
+      && (this.sizeForm.value.heightCm ?? undefined) === request.heightCm;
   }
 }

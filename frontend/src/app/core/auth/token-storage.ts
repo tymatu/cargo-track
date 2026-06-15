@@ -1,29 +1,28 @@
 import { Injectable } from '@angular/core';
 
-const ACCESS_KEY = 'ct_access_token';
-const REFRESH_KEY = 'ct_refresh_token';
+const LEGACY_ACCESS_KEY = 'ct_access_token';
+const LEGACY_REFRESH_KEY = 'ct_refresh_token';
 
-/**
- * Хранение токенов в localStorage — осознанный трейд-офф MVP
- * (SDP, раздел 5.2). [EXT]: refresh в httpOnly cookie.
- */
 @Injectable({ providedIn: 'root' })
 export class TokenStorage {
+  private accessTokenValue: string | null = null;
+
+  constructor() {
+    localStorage.removeItem(LEGACY_ACCESS_KEY);
+    localStorage.removeItem(LEGACY_REFRESH_KEY);
+  }
+
   get accessToken(): string | null {
-    return localStorage.getItem(ACCESS_KEY);
+    return this.accessTokenValue;
   }
 
-  get refreshToken(): string | null {
-    return localStorage.getItem(REFRESH_KEY);
-  }
-
-  store(accessToken: string, refreshToken: string): void {
-    localStorage.setItem(ACCESS_KEY, accessToken);
-    localStorage.setItem(REFRESH_KEY, refreshToken);
+  store(accessToken: string): void {
+    this.accessTokenValue = accessToken;
   }
 
   clear(): void {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+    this.accessTokenValue = null;
+    localStorage.removeItem(LEGACY_ACCESS_KEY);
+    localStorage.removeItem(LEGACY_REFRESH_KEY);
   }
 }

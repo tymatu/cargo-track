@@ -1,5 +1,6 @@
 package com.cargotrack.parcel;
 
+import com.cargotrack.common.AuditableEntity;
 import com.cargotrack.warehouse.Warehouse;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,9 +18,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.Instant;
 
 /** История посылки человеческим языком — таймлайн пользователя (SDP, раздел 6.1, уровень 3). */
 @Entity
@@ -29,7 +27,7 @@ import java.time.Instant;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TrackingEvent {
+public class TrackingEvent extends AuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -49,11 +47,4 @@ public class TrackingEvent {
     @JoinColumn(name = "warehouse_id")
     private Warehouse warehouse;
 
-    /** NULL = система/симулятор. */
-    @Column(name = "created_by")
-    private Long createdBy;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
 }

@@ -1,5 +1,7 @@
 package com.cargotrack.user;
 
+import com.cargotrack.common.HasId;
+
 public record UserDto(
         Long id,
         String email,
@@ -7,6 +9,7 @@ public record UserDto(
         String lastName,
         String phone,
         Role role,
-        UserStatus status
-) {
+        UserStatus status,
+        Long warehouseId
+) implements HasId {
 }

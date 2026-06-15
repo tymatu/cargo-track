@@ -8,9 +8,11 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { RouterLink } from '@angular/router';
 import { Page, Parcel, ParcelStatus, STATUS_LABELS } from '../../core/api/models';
 import { ParcelsService } from '../../core/api/parcels.service';
+import { apiErrorMessage } from '../../shared/api-error';
 import { StatusBadge } from '../../shared/status-badge';
 
 @Component({
@@ -109,6 +111,7 @@ import { StatusBadge } from '../../shared/status-badge';
 })
 export class ParcelList {
   private readonly parcels = inject(ParcelsService);
+  private readonly snackBar = inject(MatSnackBar);
 
   protected readonly statusOptions = Object.entries(STATUS_LABELS);
   protected readonly columns = ['trackingNumber', 'route', 'status', 'price', 'createdAt'];
@@ -136,6 +139,12 @@ export class ParcelList {
   }
 
   private load(page: number, size: number): void {
-    this.parcels.my(page, size, this.status()).subscribe((result) => this.page.set(result));
+    this.parcels.my(page, size, this.status()).subscribe({
+      next: (result) => this.page.set(result),
+      error: (err) =>
+        this.snackBar.open(apiErrorMessage(err, 'Не удалось загрузить посылки'), 'OK', {
+          duration: 5000,
+        }),
+    });
   }
 }

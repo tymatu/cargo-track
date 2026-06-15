@@ -1,24 +1,30 @@
 package com.cargotrack.parcel;
 
+import com.cargotrack.audit.AuditAction;
+import com.cargotrack.audit.Auditable;
 import com.cargotrack.common.ApiException;
 import com.cargotrack.common.GeoUtils;
 import com.cargotrack.common.IllegalStateTransitionException;
 import com.cargotrack.common.PageResponse;
+import com.cargotrack.live.ParcelStatusChangedEvent;
 import com.cargotrack.parcel.dto.CreateParcelRequest;
 import com.cargotrack.parcel.dto.ParcelDetailDto;
 import com.cargotrack.parcel.dto.ParcelDto;
 import com.cargotrack.parcel.dto.PriceRequest;
 import com.cargotrack.parcel.dto.PublicTrackingDto;
+import com.cargotrack.routing.TrackingMapService;
 import com.cargotrack.user.User;
 import com.cargotrack.user.UserRepository;
 import com.cargotrack.warehouse.Warehouse;
 import com.cargotrack.warehouse.WarehouseRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -34,8 +40,11 @@ public class ParcelService {
     private final UserRepository userRepository;
     private final PricingService pricingService;
     private final ParcelMapper parcelMapper;
+    private final TrackingMapService trackingMapService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
+    @Auditable(action = AuditAction.PARCEL_CREATED, entityType = "Parcel")
     public ParcelDto create(CreateParcelRequest request, Long senderId) {
         if (request.originWarehouseId().equals(request.destinationWarehouseId())) {
             throw ApiException.badRequest("Склады отправления и назначения должны различаться");
@@ -70,7 +79,6 @@ public class ParcelService {
                 .status(ParcelStatus.CREATED)
                 .description("Посылка создана, ожидает приёма на складе " + origin.getName())
                 .warehouse(origin)
-                .createdBy(senderId)
                 .build());
 
         return parcelMapper.toDto(parcel);
@@ -100,10 +108,14 @@ public class ParcelService {
     public ParcelDetailDto findDetail(Long parcelId) {
         Parcel parcel = loadParcel(parcelId);
         var events = parcelMapper.toEventDtos(eventRepository.findByParcelIdOrderByCreatedAtAsc(parcelId));
-        return new ParcelDetailDto(parcelMapper.toDto(parcel), events);
+        return new ParcelDetailDto(
+                parcelMapper.toDto(parcel),
+                events,
+                trackingMapService.findForParcel(parcelId));
     }
 
     @Transactional
+    @Auditable(action = AuditAction.PARCEL_CANCELLED, entityType = "Parcel")
     public ParcelDto cancel(Long parcelId, Long actorId) {
         Parcel parcel = loadParcel(parcelId);
         changeStatus(parcel, ParcelStatus.CANCELLED, "Посылка отменена отправителем", null, actorId);
@@ -112,7 +124,8 @@ public class ParcelService {
 
     @Transactional(readOnly = true)
     public PublicTrackingDto trackPublic(String trackingNumber) {
-        Parcel parcel = parcelRepository.findByTrackingNumber(trackingNumber)
+        String normalizedTrackingNumber = normalizeTrackingNumber(trackingNumber);
+        Parcel parcel = parcelRepository.findByTrackingNumber(normalizedTrackingNumber)
                 .orElseThrow(() -> ApiException.notFound("Посылка с таким номером не найдена"));
         var events = parcelMapper.toEventDtos(
                 eventRepository.findByParcelIdOrderByCreatedAtAsc(parcel.getId()));
@@ -123,15 +136,16 @@ public class ParcelService {
                 parcel.getDestinationWarehouse().getCity(),
                 maskName(parcel.getRecipientName()),
                 parcel.getCreatedAt(),
-                events);
+                events,
+                trackingMapService.findPublicForParcel(parcel.getId(), parcel.getStatus()));
     }
 
     /**
      * Единственная точка смены статуса (SDP, Приложение A): валидирует переход,
      * пишет tracking_event. Аудит — Фаза 3, WS-уведомления — Фаза 7.
      */
-    void changeStatus(Parcel parcel, ParcelStatus target, String description,
-                      Warehouse warehouse, Long actorId) {
+    public void changeStatus(Parcel parcel, ParcelStatus target, String description,
+                             Warehouse warehouse, Long actorId) {
         if (!parcel.getStatus().canTransitionTo(target)) {
             throw new IllegalStateTransitionException("посылки", parcel.getStatus(), target);
         }
@@ -141,8 +155,8 @@ public class ParcelService {
                 .status(target)
                 .description(description)
                 .warehouse(warehouse)
-                .createdBy(actorId)
                 .build());
+        eventPublisher.publishEvent(new ParcelStatusChangedEvent(parcel.getId()));
     }
 
     private Parcel loadParcel(Long id) {
@@ -171,6 +185,12 @@ public class ParcelService {
             candidate = sb.toString();
         } while (parcelRepository.existsByTrackingNumber(candidate));
         return candidate;
+    }
+
+    private String normalizeTrackingNumber(String trackingNumber) {
+        return trackingNumber == null
+                ? ""
+                : trackingNumber.trim().toUpperCase(Locale.ROOT);
     }
 
     private String maskName(String fullName) {

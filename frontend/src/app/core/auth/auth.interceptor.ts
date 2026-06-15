@@ -7,20 +7,15 @@ import {
 } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Observable, Subject, catchError, switchMap, take, throwError } from 'rxjs';
+import { SKIP_AUTH_REFRESH } from './auth-context';
 import { AuthService } from './auth.service';
 import { TokenStorage } from './token-storage';
 
-/** Эндпоинты, где Bearer не нужен и 401 — это ответ бизнес-логики, а не сигнал к refresh. */
-const SKIP_PATHS = ['/auth/login', '/auth/register', '/auth/refresh'];
+const SKIP_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];
 
 let refreshing = false;
 const refreshed$ = new Subject<string | null>();
 
-/**
- * Подставляет Authorization: Bearer; на 401 делает ОДИН refresh,
- * остальные запросы ждут его в очереди (SDP, раздел 10.2).
- * Если refresh провалился — logout.
- */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const storage = inject(TokenStorage);
   const auth = inject(AuthService);
@@ -34,7 +29,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(authorized).pipe(
     catchError((error: HttpErrorResponse) => {
-      if (error.status !== 401 || !storage.refreshToken) {
+      if (error.status !== 401 || !accessToken || req.context.get(SKIP_AUTH_REFRESH)) {
         return throwError(() => error);
       }
       return handle401(req, next, auth);
@@ -64,7 +59,6 @@ function handle401(
     );
   }
 
-  // refresh уже идёт — ждём его результат и повторяем запрос с новым токеном
   return refreshed$.pipe(
     take(1),
     switchMap((token) =>

@@ -7,6 +7,8 @@ import com.cargotrack.parcel.dto.ParcelDetailDto;
 import com.cargotrack.parcel.dto.ParcelDto;
 import com.cargotrack.parcel.dto.PriceRequest;
 import jakarta.validation.Valid;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -26,6 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/parcels")
 @RequiredArgsConstructor
+@Tag(name = "Parcels", description = "Customer parcel creation, pricing and lifecycle")
+@SecurityRequirement(name = "bearerAuth")
 public class ParcelController {
 
     private final ParcelService parcelService;

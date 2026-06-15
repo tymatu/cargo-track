@@ -1,5 +1,7 @@
 package com.cargotrack.warehouse;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,6 +14,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/warehouses")
 @RequiredArgsConstructor
+@Tag(name = "Warehouses", description = "Warehouse directory")
+@SecurityRequirement(name = "bearerAuth")
 public class WarehouseController {
 
     private final WarehouseRepository warehouseRepository;

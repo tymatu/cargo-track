@@ -1,6 +1,7 @@
 package com.cargotrack.parcel.dto;
 
 import com.cargotrack.parcel.ParcelStatus;
+import com.cargotrack.routing.PublicTrackingMapDto;
 
 import java.time.Instant;
 import java.util.List;
@@ -13,6 +14,7 @@ public record PublicTrackingDto(
         String destinationCity,
         String recipientNameMasked,
         Instant createdAt,
-        List<TrackingEventDto> events
+        List<TrackingEventDto> events,
+        PublicTrackingMapDto tracking
 ) {
 }

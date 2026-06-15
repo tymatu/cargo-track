@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   backend:
@@ -35,7 +36,68 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Lint
+        run: npm run lint
       - name: Test
         run: npm test -- --watch=false
       - name: Build
         run: npm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production compose
+        env:
+          DB_PASSWORD: ci-local-db-password
+          JWT_SECRET: ci-local-jwt-secret-ci-local-jwt-secret-ci-local-jwt-secret-123456
+        run: docker compose -f docker-compose.prod.yml config --quiet
+
+  e2e:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, compose]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Start local demo stack
+        env:
+          DB_PASSWORD: ci-local-db-password
+          JWT_SECRET: ci-local-jwt-secret-ci-local-jwt-secret-ci-local-jwt-secret-123456
+          CORS_ALLOWED_ORIGINS: http://localhost:8088
+          SPRING_PROFILES_ACTIVE: prod,demo
+          OSRM_ENABLED: "false"
+          SIMULATION_ENABLED: "true"
+          SIMULATION_TIME_SCALE: "12"
+          DEMO_SEED_ENABLED: "true"
+          DEMO_LIFE_ENABLED: "true"
+        run: docker compose -f docker-compose.prod.yml up -d --build
+      - name: Wait for demo stack
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8088/health >/dev/null; then
+              exit 0
+            fi
+            sleep 3
+          done
+          docker compose -f docker-compose.prod.yml ps
+          docker compose -f docker-compose.prod.yml logs --tail=200
+          exit 1
+      - name: Run Playwright smoke tests
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:8088
+        run: npm run test:e2e
+      - name: Stop local demo stack
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v

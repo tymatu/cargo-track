@@ -1,5 +1,6 @@
 package com.cargotrack.parcel.dto;
 
+import com.cargotrack.common.HasId;
 import com.cargotrack.parcel.ParcelStatus;
 import com.cargotrack.warehouse.WarehouseDto;
 
@@ -22,5 +23,5 @@ public record ParcelDto(
         BigDecimal declaredValue,
         BigDecimal price,
         Instant createdAt
-) {
+) implements HasId {
 }

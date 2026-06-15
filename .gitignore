@@ -1,5 +1,7 @@
 # --- Secrets / env ---
 .env
+.env.*
+!.env.example
 
 # --- IDE ---
 .idea/
@@ -13,6 +15,13 @@ backend/target/
 frontend/node_modules/
 frontend/dist/
 frontend/.angular/
+frontend/test-results/
+frontend/playwright-report/
+
+# --- Logs / temp ---
+*.log
+*.tmp
+*.temp
 
 # --- OS ---
 Thumbs.db

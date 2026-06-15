@@ -6,6 +6,7 @@ import com.cargotrack.user.UserRepository;
 import com.cargotrack.user.UserStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -31,6 +33,8 @@ class AuthFlowTest {
 
     private static final String EMAIL = "ivan@test.io";
     private static final String PASSWORD = "secret-password-1";
+    private static final String REFRESH_COOKIE = "ct_refresh_token";
+    private static final String SESSION_COOKIE = "ct_session";
 
     @Autowired
     private MockMvc mockMvc;
@@ -47,7 +51,7 @@ class AuthFlowTest {
         userRepository.deleteAll();
     }
 
-    // --- Р РµРіРёСЃС‚СЂР°С†РёСЏ ---
+    // --- Registration ---
 
     @Test
     void register_returns201AndUserRole() throws Exception {
@@ -65,6 +69,16 @@ class AuthFlowTest {
     }
 
     @Test
+    void register_normalizesEmailCase() throws Exception {
+        mockMvc.perform(register("IVAN@Test.IO"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.email").value(EMAIL));
+
+        mockMvc.perform(register(EMAIL)).andExpect(status().isConflict());
+        mockMvc.perform(login("IVAN@Test.IO", PASSWORD)).andExpect(status().isOk());
+    }
+
+    @Test
     void register_invalidBody_returns400WithProblemDetail() throws Exception {
         String body = """
                 {"email":"not-an-email","password":"123","firstName":"","lastName":""}
@@ -75,21 +89,24 @@ class AuthFlowTest {
                 .andExpect(jsonPath("$.title").value("Validation failed"));
     }
 
-    // --- Р’С…РѕРґ ---
+    // --- Login ---
 
     @Test
     void login_returnsTokensAndUser() throws Exception {
         mockMvc.perform(register(EMAIL)).andExpect(status().isCreated());
 
-        mockMvc.perform(login(EMAIL, PASSWORD))
+        MvcResult result = mockMvc.perform(login(EMAIL, PASSWORD))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.refreshToken").isNotEmpty())
-                .andExpect(jsonPath("$.user.email").value(EMAIL));
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(jsonPath("$.user.email").value(EMAIL))
+                .andReturn();
+
+        assertAuthCookiesIssued(result);
     }
 
     @Test
-    @DisplayName("РќРµРІРµСЂРЅС‹Р№ РїР°СЂРѕР»СЊ Рё РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ email РґР°СЋС‚ РѕРґРёРЅР°РєРѕРІС‹Р№ 401")
+    @DisplayName("Wrong password and unknown email return the same 401 response")
     void login_badCredentials_uniform401() throws Exception {
         mockMvc.perform(register(EMAIL)).andExpect(status().isCreated());
 
@@ -110,7 +127,7 @@ class AuthFlowTest {
         mockMvc.perform(login(EMAIL, PASSWORD)).andExpect(status().isUnauthorized());
     }
 
-    // --- Р—Р°С‰РёС‰С‘РЅРЅС‹Рµ СЌРЅРґРїРѕРёРЅС‚С‹ ---
+    // --- Protected endpoints ---
 
     @Test
     void protectedEndpoint_withoutToken_returns401() throws Exception {
@@ -137,36 +154,53 @@ class AuthFlowTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // --- Р РѕС‚Р°С†РёСЏ refresh ---
+    // --- Refresh rotation ---
 
     @Test
     void refresh_rotatesToken() throws Exception {
         mockMvc.perform(register(EMAIL)).andExpect(status().isCreated());
-        JsonNode auth = loginAndParse();
-        String oldRefresh = auth.get("refreshToken").asText();
+        MvcResult auth = loginAndReturn();
+        String oldRefresh = refreshTokenFrom(auth);
 
-        JsonNode refreshed = parse(mockMvc.perform(refresh(oldRefresh))
+        MvcResult refreshed = mockMvc.perform(refresh(oldRefresh))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andReturn());
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andReturn();
 
-        assertThat(refreshed.get("refreshToken").asText()).isNotEqualTo(oldRefresh);
+        assertThat(refreshTokenFrom(refreshed)).isNotEqualTo(oldRefresh);
     }
 
     @Test
-    @DisplayName("Reuse РїРѕРіР°С€РµРЅРЅРѕРіРѕ refresh-С‚РѕРєРµРЅР° РѕС‚Р·С‹РІР°РµС‚ РІСЃРµ С‚РѕРєРµРЅС‹ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ")
+    void refresh_acceptsHttpOnlyCookie() throws Exception {
+        mockMvc.perform(register(EMAIL)).andExpect(status().isCreated());
+        MvcResult auth = loginAndReturn();
+        String oldRefresh = refreshTokenFrom(auth);
+
+        MvcResult refreshed = mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie(REFRESH_COOKIE, oldRefresh)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andReturn();
+
+        assertAuthCookiesIssued(refreshed);
+        assertThat(refreshTokenFrom(refreshed)).isNotEqualTo(oldRefresh);
+    }
+
+    @Test
+    @DisplayName("Reusing a revoked refresh token revokes all user tokens")
     void refresh_reuseRevokedToken_revokesEverything() throws Exception {
         mockMvc.perform(register(EMAIL)).andExpect(status().isCreated());
-        JsonNode auth = loginAndParse();
-        String oldRefresh = auth.get("refreshToken").asText();
+        MvcResult auth = loginAndReturn();
+        String oldRefresh = refreshTokenFrom(auth);
 
-        JsonNode refreshed = parse(mockMvc.perform(refresh(oldRefresh))
-                .andExpect(status().isOk()).andReturn());
-        String newRefresh = refreshed.get("refreshToken").asText();
+        MvcResult refreshed = mockMvc.perform(refresh(oldRefresh))
+                .andExpect(status().isOk()).andReturn();
+        String newRefresh = refreshTokenFrom(refreshed);
 
-        // РїРѕРІС‚РѕСЂРЅРѕРµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ СЃС‚Р°СЂРѕРіРѕ в†’ 401
+        // Reusing the old refresh token returns 401.
         mockMvc.perform(refresh(oldRefresh)).andExpect(status().isUnauthorized());
-        // Рё РЅРѕРІС‹Р№ С‚РѕР¶Рµ РѕС‚РѕР·РІР°РЅ (СЂРµР°РєС†РёСЏ РЅР° РєСЂР°Р¶Сѓ)
+        // The new token is revoked too as a theft-reuse response.
         mockMvc.perform(refresh(newRefresh)).andExpect(status().isUnauthorized());
     }
 
@@ -178,10 +212,10 @@ class AuthFlowTest {
     @Test
     void refresh_blockedUser_returns401() throws Exception {
         mockMvc.perform(register(EMAIL)).andExpect(status().isCreated());
-        JsonNode auth = loginAndParse();
+        MvcResult auth = loginAndReturn();
         blockUser(EMAIL);
 
-        mockMvc.perform(refresh(auth.get("refreshToken").asText()))
+        mockMvc.perform(refresh(refreshTokenFrom(auth)))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -190,31 +224,35 @@ class AuthFlowTest {
     @Test
     void logout_revokesRefreshToken() throws Exception {
         mockMvc.perform(register(EMAIL)).andExpect(status().isCreated());
-        JsonNode auth = loginAndParse();
-        String refreshToken = auth.get("refreshToken").asText();
+        MvcResult auth = loginAndReturn();
+        JsonNode body = parse(auth);
+        String refreshToken = refreshTokenFrom(auth);
 
-        mockMvc.perform(post("/api/v1/auth/logout")
-                        .header("Authorization", "Bearer " + auth.get("accessToken").asText())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
-                .andExpect(status().isNoContent());
+        MvcResult logout = mockMvc.perform(post("/api/v1/auth/logout")
+                        .header("Authorization", "Bearer " + body.get("accessToken").asText())
+                        .cookie(new Cookie(REFRESH_COOKIE, refreshToken)))
+                .andExpect(status().isNoContent())
+                .andReturn();
+        assertThat(logout.getResponse().getHeaders(HttpHeaders.SET_COOKIE))
+                .hasSize(2)
+                .allMatch(value -> value.contains("Max-Age=0"));
 
         mockMvc.perform(refresh(refreshToken)).andExpect(status().isUnauthorized());
     }
 
     @Test
-    void logout_withoutToken_returns401() throws Exception {
+    void logout_withoutToken_clearsCookies() throws Exception {
         mockMvc.perform(post("/api/v1/auth/logout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"refreshToken\":\"whatever\"}"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isNoContent());
     }
 
-    // --- РҐРµР»РїРµСЂС‹ ---
+    // --- Helpers ---
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder register(String email) {
         String body = """
-                {"email":"%s","password":"%s","firstName":"РРІР°РЅ","lastName":"РўРµСЃС‚РѕРІ","phone":"+420111222333"}
+                {"email":"%s","password":"%s","firstName":"Ivan","lastName":"Testov","phone":"+420111222333"}
                 """.formatted(email, PASSWORD);
         return post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body);
     }
@@ -231,12 +269,34 @@ class AuthFlowTest {
     }
 
     private JsonNode loginAndParse() throws Exception {
-        return parse(mockMvc.perform(login(EMAIL, PASSWORD))
-                .andExpect(status().isOk()).andReturn());
+        return parse(loginAndReturn());
+    }
+
+    private MvcResult loginAndReturn() throws Exception {
+        return mockMvc.perform(login(EMAIL, PASSWORD))
+                .andExpect(status().isOk()).andReturn();
     }
 
     private JsonNode parse(MvcResult result) throws Exception {
         return objectMapper.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private String refreshTokenFrom(MvcResult result) {
+        Cookie cookie = result.getResponse().getCookie(REFRESH_COOKIE);
+        assertThat(cookie).isNotNull();
+        return cookie.getValue();
+    }
+
+    private void assertAuthCookiesIssued(MvcResult result) {
+        Cookie refreshCookie = result.getResponse().getCookie(REFRESH_COOKIE);
+        Cookie sessionCookie = result.getResponse().getCookie(SESSION_COOKIE);
+        assertThat(refreshCookie).isNotNull();
+        assertThat(refreshCookie.isHttpOnly()).isTrue();
+        assertThat(sessionCookie).isNotNull();
+        assertThat(sessionCookie.isHttpOnly()).isFalse();
+        assertThat(result.getResponse().getHeaders(HttpHeaders.SET_COOKIE))
+                .anyMatch(value -> value.contains(REFRESH_COOKIE + "=") && value.contains("HttpOnly"))
+                .anyMatch(value -> value.contains(SESSION_COOKIE + "=1"));
     }
 
     @Transactional

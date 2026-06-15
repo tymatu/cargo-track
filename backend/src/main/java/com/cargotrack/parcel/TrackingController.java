@@ -1,5 +1,6 @@
 package com.cargotrack.parcel;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.cargotrack.parcel.dto.PublicTrackingDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/tracking")
 @RequiredArgsConstructor
+@Tag(name = "Public tracking", description = "Anonymous parcel tracking by tracking number")
 public class TrackingController {
 
     private final ParcelService parcelService;

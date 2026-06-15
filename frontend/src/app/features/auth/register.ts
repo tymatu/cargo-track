@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { AuthService } from '../../core/auth/auth.service';
+import { apiErrorMessage } from '../../shared/api-error';
 
 @Component({
   selector: 'app-register',
@@ -28,7 +29,7 @@ import { AuthService } from '../../core/auth/auth.service';
           <form [formGroup]="form" (ngSubmit)="submit()">
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Имя</mat-label>
-              <input matInput formControlName="firstName" autocomplete="given-name" />
+              <input matInput data-testid="register-first-name" formControlName="firstName" autocomplete="given-name" />
               @if (form.controls.firstName.hasError('required')) {
                 <mat-error>Укажите имя</mat-error>
               }
@@ -36,7 +37,7 @@ import { AuthService } from '../../core/auth/auth.service';
 
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Фамилия</mat-label>
-              <input matInput formControlName="lastName" autocomplete="family-name" />
+              <input matInput data-testid="register-last-name" formControlName="lastName" autocomplete="family-name" />
               @if (form.controls.lastName.hasError('required')) {
                 <mat-error>Укажите фамилию</mat-error>
               }
@@ -44,7 +45,7 @@ import { AuthService } from '../../core/auth/auth.service';
 
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Email</mat-label>
-              <input matInput type="email" formControlName="email" autocomplete="email" />
+              <input matInput data-testid="register-email" type="email" formControlName="email" autocomplete="email" />
               @if (form.controls.email.hasError('required')) {
                 <mat-error>Укажите email</mat-error>
               } @else if (form.controls.email.hasError('email')) {
@@ -54,12 +55,12 @@ import { AuthService } from '../../core/auth/auth.service';
 
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Телефон (необязательно)</mat-label>
-              <input matInput formControlName="phone" autocomplete="tel" />
+              <input matInput data-testid="register-phone" formControlName="phone" autocomplete="tel" />
             </mat-form-field>
 
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Пароль</mat-label>
-              <input matInput type="password" formControlName="password" autocomplete="new-password" />
+              <input matInput data-testid="register-password" type="password" formControlName="password" autocomplete="new-password" />
               @if (form.controls.password.hasError('required')) {
                 <mat-error>Укажите пароль</mat-error>
               } @else if (form.controls.password.hasError('minlength')) {
@@ -71,7 +72,7 @@ import { AuthService } from '../../core/auth/auth.service';
               <p class="auth-error" role="alert">{{ error() }}</p>
             }
 
-            <button matButton="filled" type="submit" class="full-width" [disabled]="loading()">
+            <button matButton="filled" data-testid="register-submit" type="submit" class="full-width" [disabled]="loading()">
               {{ loading() ? 'Создаём аккаунт…' : 'Зарегистрироваться' }}
             </button>
           </form>
@@ -116,7 +117,7 @@ export class Register {
       },
       error: (err) => {
         this.loading.set(false);
-        this.error.set(err?.error?.detail ?? 'Не удалось зарегистрироваться.');
+        this.error.set(apiErrorMessage(err, 'Не удалось зарегистрироваться.'));
       },
     });
   }

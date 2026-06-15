@@ -1,8 +1,10 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, firstValueFrom, tap } from 'rxjs';
+import { Observable, finalize, firstValueFrom, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { LiveUpdatesService } from '../live/live-updates.service';
+import { SKIP_AUTH_REFRESH } from './auth-context';
 import { AuthResponse, RegisterRequest, Role, User } from './models';
 import { TokenStorage } from './token-storage';
 
@@ -18,56 +20,61 @@ export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly storage = inject(TokenStorage);
   private readonly router = inject(Router);
+  private readonly liveUpdates = inject(LiveUpdatesService);
   private readonly api = `${environment.apiUrl}/auth`;
 
   readonly currentUser = signal<User | null>(null);
   readonly isLoggedIn = computed(() => this.currentUser() !== null);
 
   register(request: RegisterRequest): Observable<User> {
-    return this.http.post<User>(`${this.api}/register`, request);
+    return this.http.post<User>(`${this.api}/register`, {
+      ...request,
+      email: request.email.trim().toLowerCase(),
+    });
   }
 
   login(email: string, password: string): Observable<AuthResponse> {
     return this.http
-      .post<AuthResponse>(`${this.api}/login`, { email, password })
+      .post<AuthResponse>(
+        `${this.api}/login`,
+        { email: email.trim().toLowerCase(), password },
+        { withCredentials: true },
+      )
       .pipe(tap((res) => this.applyAuth(res)));
   }
 
-  /** Ротация: бэкенд гасит старый refresh и выдаёт новую пару. */
   refresh(): Observable<AuthResponse> {
     return this.http
-      .post<AuthResponse>(`${this.api}/refresh`, { refreshToken: this.storage.refreshToken })
+      .post<AuthResponse>(`${this.api}/refresh`, {}, { withCredentials: true })
       .pipe(tap((res) => this.applyAuth(res)));
   }
 
   logout(): void {
-    const refreshToken = this.storage.refreshToken;
-    if (refreshToken) {
-      this.http.post(`${this.api}/logout`, { refreshToken }).subscribe();
-    }
-    this.forceLogout();
+    const context = new HttpContext().set(SKIP_AUTH_REFRESH, true);
+    this.http
+      .post(`${this.api}/logout`, {}, { withCredentials: true, context })
+      .pipe(finalize(() => this.forceLogout()))
+      .subscribe();
   }
 
-  /** Локальный сброс сессии (например, когда refresh провалился). */
   forceLogout(): void {
+    this.liveUpdates.disconnect();
     this.storage.clear();
+    this.clearSessionCookie();
     this.currentUser.set(null);
     this.router.navigate(['/login']);
   }
 
-  /**
-   * Восстановление сессии после F5: если токены сохранены — тянем /me.
-   * Истёкший access прозрачно обновится интерсептором.
-   */
   async restoreSession(): Promise<void> {
-    if (!this.storage.refreshToken) {
+    if (!this.hasSessionCookie()) {
       return;
     }
     try {
-      const user = await firstValueFrom(this.http.get<User>(`${this.api}/me`));
-      this.currentUser.set(user);
+      await firstValueFrom(this.refresh());
     } catch {
+      this.liveUpdates.disconnect();
       this.storage.clear();
+      this.clearSessionCookie();
       this.currentUser.set(null);
     }
   }
@@ -77,14 +84,26 @@ export class AuthService {
     return user !== null && roles.includes(user.role);
   }
 
-  /** Домашняя страница по роли (SDP, раздел 10.2). */
   homePath(): string {
     const user = this.currentUser();
     return user ? HOME_BY_ROLE[user.role] : '/login';
   }
 
   private applyAuth(res: AuthResponse): void {
-    this.storage.store(res.accessToken, res.refreshToken);
+    this.storage.store(res.accessToken);
     this.currentUser.set(res.user);
+  }
+
+  private hasSessionCookie(): boolean {
+    return (
+      typeof document !== 'undefined' &&
+      document.cookie.split(';').some((cookie) => cookie.trim() === 'ct_session=1')
+    );
+  }
+
+  private clearSessionCookie(): void {
+    if (typeof document !== 'undefined') {
+      document.cookie = 'ct_session=; Max-Age=0; path=/';
+    }
   }
 }

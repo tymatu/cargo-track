@@ -26,6 +26,7 @@ class ParcelStatusTest {
 
     @Test
     void forbiddenTransitionsAreRejected() {
+        assertThat(CREATED.canTransitionTo(null)).isFalse();
         assertThat(CREATED.canTransitionTo(IN_TRANSIT)).isFalse();
         assertThat(CREATED.canTransitionTo(DELIVERED)).isFalse();
         assertThat(ACCEPTED_AT_ORIGIN.canTransitionTo(CANCELLED)).isFalse(); // после приёма не отменить

@@ -1,0 +1,40 @@
+spring:
+  jpa:
+    open-in-view: false
+
+app:
+  jwt:
+    secret: cargotrack-test-secret-0123456789-abcdefghijklmnopqrstuvwxyz
+    access-ttl: 15m
+    refresh-ttl: 14d
+  cors:
+    allowed-origins: http://localhost:4200
+  auth-rate-limit:
+    enabled: false
+    capacity: 20
+    refill-tokens: 20
+    refill-period: 1m
+    bucket-ttl: 15m
+  pricing:
+    base: 5.00
+    per-kg: 0.50
+    per-km: 0.05
+  routing:
+    base-url: https://router.project-osrm.org
+    osrm-enabled: false
+    connect-timeout: 100ms
+    read-timeout: 100ms
+    fallback-points: 60
+  simulation:
+    enabled: false
+    speed-kmh: 65
+    time-scale: 60
+    tick-delay: 2s
+
+logging:
+  level:
+    root: INFO
+    org.springframework: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
+    org.testcontainers: WARN

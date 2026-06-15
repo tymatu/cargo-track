@@ -15,7 +15,8 @@ public record UserPrincipal(
         String email,
         String passwordHash,
         Role role,
-        UserStatus status
+        UserStatus status,
+        Long warehouseId
 ) implements UserDetails {
 
     public static UserPrincipal from(User user) {
@@ -24,7 +25,8 @@ public record UserPrincipal(
                 user.getEmail(),
                 user.getPasswordHash(),
                 user.getRole(),
-                user.getStatus());
+                user.getStatus(),
+                user.getWarehouseId());
     }
 
     public Long getId() {

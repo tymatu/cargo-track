@@ -1,9 +1,13 @@
 package com.cargotrack.auth;
 
-import com.cargotrack.auth.dto.AuthResponse;
+import com.cargotrack.audit.AuditAction;
+import com.cargotrack.audit.Auditable;
+import com.cargotrack.audit.AuthAuditEvent;
+import com.cargotrack.auth.dto.AuthTokens;
 import com.cargotrack.auth.dto.LoginRequest;
 import com.cargotrack.auth.dto.RegisterRequest;
 import com.cargotrack.common.ApiException;
+import com.cargotrack.common.EmailNormalizer;
 import com.cargotrack.config.JwtProperties;
 import com.cargotrack.user.Role;
 import com.cargotrack.user.User;
@@ -13,6 +17,7 @@ import com.cargotrack.user.UserRepository;
 import com.cargotrack.user.UserStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
@@ -42,55 +47,50 @@ public class AuthService {
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final UserMapper userMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
+    @Auditable(action = AuditAction.USER_REGISTERED, entityType = "User", actorFromResult = true)
     public UserDto register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
+        String email = EmailNormalizer.normalize(request.email());
+        if (userRepository.existsByEmail(email)) {
             throw ApiException.conflict("Email уже зарегистрирован");
         }
         User user = User.builder()
-                .email(request.email())
+                .email(email)
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .firstName(request.firstName())
                 .lastName(request.lastName())
                 .phone(request.phone())
-                .role(Role.USER) // самостоятельная регистрация — всегда USER; сотрудников создаёт админ
+                .role(Role.USER)
                 .build();
         return userMapper.toDto(userRepository.save(user));
     }
 
     @Transactional
-    public AuthResponse login(LoginRequest request) {
+    public AuthTokens login(LoginRequest request) {
+        String email = EmailNormalizer.normalize(request.email());
         try {
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.email(), request.password()));
+                    new UsernamePasswordAuthenticationToken(email, request.password()));
         } catch (AuthenticationException e) {
-            // единое сообщение: не раскрываем, что именно неверно (SDP, чек-лист 5.7)
             throw ApiException.unauthorized(BAD_CREDENTIALS);
         }
-        User user = userRepository.findByEmail(request.email())
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> ApiException.unauthorized(BAD_CREDENTIALS));
         return issueTokens(user);
     }
 
-    /**
-     * Ротация refresh-токена (SDP, раздел 5.2): старый гасится, выдаётся новый.
-     * Повторное использование погашенного токена — признак кражи:
-     * отзываем все токены пользователя.
-     *
-     * <p>noRollbackFor: при reuse мы сначала отзываем токены и только потом
-     * бросаем 401 — откат транзакции отменил бы отзыв и сломал защиту.
-     */
     @Transactional(noRollbackFor = ApiException.class)
-    public AuthResponse refresh(String tokenValue) {
+    public AuthTokens refresh(String tokenValue) {
         RefreshToken stored = refreshTokenRepository.findByToken(tokenValue)
                 .orElseThrow(() -> ApiException.unauthorized(INVALID_REFRESH));
 
         if (stored.isRevoked()) {
             int revoked = refreshTokenRepository.revokeAllByUserId(stored.getUser().getId());
-            // TODO Фаза 3: событие SUSPICIOUS_REFRESH_REUSE в audit_log
             log.warn("Refresh-token reuse detected for user {}; revoked {} tokens",
                     stored.getUser().getId(), revoked);
+            publishAuthAudit(AuditAction.SUSPICIOUS_REFRESH_REUSE, stored.getUser());
             throw ApiException.unauthorized(INVALID_REFRESH);
         }
         if (stored.getExpiresAt().isBefore(Instant.now())) {
@@ -103,28 +103,37 @@ public class AuthService {
         }
 
         stored.setRevoked(true);
-        return issueTokens(user);
+        AuthTokens response = issueTokens(user);
+        publishAuthAudit(AuditAction.TOKEN_REFRESHED, user);
+        return response;
     }
 
     @Transactional
     public void logout(String tokenValue) {
-        refreshTokenRepository.findByToken(tokenValue)
-                .ifPresent(token -> token.setRevoked(true));
+        if (tokenValue != null && !tokenValue.isBlank()) {
+            refreshTokenRepository.findByToken(tokenValue)
+                    .ifPresent(token -> token.setRevoked(true));
+        }
+        eventPublisher.publishEvent(new AuthAuditEvent(AuditAction.LOGOUT, null, null));
     }
 
-    private AuthResponse issueTokens(User user) {
+    private AuthTokens issueTokens(User user) {
         String accessToken = jwtService.generateAccessToken(user);
         RefreshToken refreshToken = refreshTokenRepository.save(RefreshToken.builder()
                 .user(user)
                 .token(randomToken())
                 .expiresAt(Instant.now().plus(jwtProperties.refreshTtl()))
                 .build());
-        return new AuthResponse(accessToken, refreshToken.getToken(), userMapper.toDto(user));
+        return new AuthTokens(accessToken, refreshToken.getToken(), userMapper.toDto(user));
     }
 
     private String randomToken() {
         byte[] bytes = new byte[48];
         RANDOM.nextBytes(bytes);
         return ENCODER.encodeToString(bytes);
+    }
+
+    private void publishAuthAudit(AuditAction action, User user) {
+        eventPublisher.publishEvent(new AuthAuditEvent(action, user.getId(), user.getEmail()));
     }
 }

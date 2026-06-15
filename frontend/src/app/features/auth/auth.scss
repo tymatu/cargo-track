@@ -6,7 +6,7 @@
 
 .auth-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 560px;
   padding: 1rem;
 }
 
@@ -23,4 +23,58 @@
 .auth-switch {
   text-align: center;
   margin: 1rem 0 0.5rem;
+}
+
+.demo-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  color: var(--mat-sys-on-surface-variant, #49454f);
+  font-size: 0.85rem;
+}
+
+.demo-divider::before,
+.demo-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--mat-sys-outline-variant, #cac4d0);
+}
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.demo-account {
+  min-height: 58px;
+}
+
+.demo-account strong,
+.demo-account span {
+  display: block;
+}
+
+.demo-account span {
+  overflow: hidden;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+}
+
+.demo-password {
+  margin: 0.9rem 0 0;
+  text-align: center;
+  color: var(--mat-sys-on-surface-variant, #49454f);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 520px) {
+  .auth-page {
+    padding-top: 2vh;
+  }
+
+  .demo-grid {
+    grid-template-columns: 1fr;
+  }
 }

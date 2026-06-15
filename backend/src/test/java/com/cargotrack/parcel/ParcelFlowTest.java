@@ -193,13 +193,18 @@ class ParcelFlowTest {
         JsonNode parcel = createParcel(ownerToken);
         String number = parcel.get("trackingNumber").asText();
 
-        mockMvc.perform(get("/api/v1/tracking/" + number))
+        mockMvc.perform(get("/api/v1/tracking/" + number.toLowerCase(java.util.Locale.ROOT)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trackingNumber").value(number))
                 .andExpect(jsonPath("$.status").value("CREATED"))
                 .andExpect(jsonPath("$.recipientNameMasked").value("П***"))
                 .andExpect(jsonPath("$.recipientName").doesNotExist())
                 .andExpect(jsonPath("$.recipientPhone").doesNotExist())
+                .andExpect(jsonPath("$.tracking.shipmentId").doesNotExist())
+                .andExpect(jsonPath("$.tracking.truckId").doesNotExist())
+                .andExpect(jsonPath("$.tracking.route").doesNotExist())
+                .andExpect(jsonPath("$.tracking.position").doesNotExist())
+                .andExpect(jsonPath("$.tracking.progressPercent").value(0))
                 .andExpect(jsonPath("$.events.length()").value(1));
     }
 

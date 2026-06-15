@@ -25,7 +25,7 @@ export const routes: Routes = [
   // USER: посылки
   {
     path: 'parcels',
-    canActivate: [authGuard, roleGuard(['USER'])],
+    canActivate: [authGuard, roleGuard(['USER', 'ADMIN'])],
     children: [
       {
         path: '',
@@ -41,23 +41,74 @@ export const routes: Routes = [
       },
     ],
   },
-  // Разделы остальных ролей — наполняются в следующих фазах
   {
     path: 'driver',
-    loadComponent: () => import('./shared/coming-soon').then((m) => m.ComingSoon),
-    canActivate: [authGuard, roleGuard(['DRIVER'])],
-    data: { title: 'Мои рейсы' },
+    canActivate: [authGuard, roleGuard(['DRIVER', 'ADMIN'])],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/driver/driver-shipment-list').then((m) => m.DriverShipmentList),
+      },
+      {
+        path: 'shipments/:id',
+        loadComponent: () =>
+          import('./features/driver/driver-shipment-detail').then((m) => m.DriverShipmentDetail),
+      },
+    ],
   },
   {
     path: 'dispatcher',
-    loadComponent: () => import('./shared/coming-soon').then((m) => m.ComingSoon),
     canActivate: [authGuard, roleGuard(['DISPATCHER', 'ADMIN'])],
-    data: { title: 'Диспетчерская' },
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/dispatcher/dispatcher-dashboard').then((m) => m.DispatcherDashboard),
+      },
+      {
+        path: 'shipments/new',
+        loadComponent: () =>
+          import('./features/dispatcher/shipment-create').then((m) => m.ShipmentCreate),
+      },
+      {
+        path: 'shipments/:id',
+        loadComponent: () =>
+          import('./features/dispatcher/shipment-load').then((m) => m.ShipmentLoad),
+      },
+    ],
   },
   {
     path: 'admin',
-    loadComponent: () => import('./shared/coming-soon').then((m) => m.ComingSoon),
     canActivate: [authGuard, roleGuard(['ADMIN'])],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/admin/admin-dashboard').then((m) => m.AdminDashboardPage),
+      },
+      {
+        path: 'users',
+        loadComponent: () => import('./features/admin/admin-users').then((m) => m.AdminUsers),
+      },
+      {
+        path: 'shipments',
+        loadComponent: () => import('./features/admin/admin-shipments').then((m) => m.AdminShipments),
+      },
+      {
+        path: 'trucks',
+        loadComponent: () => import('./features/admin/admin-trucks').then((m) => m.AdminTrucks),
+      },
+      {
+        path: 'warehouses',
+        loadComponent: () =>
+          import('./features/admin/admin-warehouses').then((m) => m.AdminWarehouses),
+      },
+      {
+        path: 'audit',
+        loadComponent: () => import('./features/admin/admin-audit').then((m) => m.AdminAudit),
+      },
+    ],
     data: { title: 'Администрирование' },
   },
   {

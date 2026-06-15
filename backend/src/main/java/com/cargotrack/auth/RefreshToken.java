@@ -1,5 +1,6 @@
 package com.cargotrack.auth;
 
+import com.cargotrack.common.AuditableEntity;
 import com.cargotrack.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,7 +16,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
@@ -26,7 +26,7 @@ import java.time.Instant;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RefreshToken {
+public class RefreshToken extends AuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,7 +46,4 @@ public class RefreshToken {
     @Builder.Default
     private boolean revoked = false;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
 }

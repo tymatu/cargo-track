@@ -8,11 +8,11 @@ export interface User {
   phone: string | null;
   role: Role;
   status: 'ACTIVE' | 'BLOCKED';
+  warehouseId: number | null;
 }
 
 export interface AuthResponse {
   accessToken: string;
-  refreshToken: string;
   user: User;
 }
 

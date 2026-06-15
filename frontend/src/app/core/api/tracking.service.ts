@@ -9,8 +9,9 @@ export class TrackingService {
   private readonly http = inject(HttpClient);
 
   track(trackingNumber: string): Observable<PublicTracking> {
+    const normalizedTrackingNumber = trackingNumber.trim().toUpperCase();
     return this.http.get<PublicTracking>(
-      `${environment.apiUrl}/tracking/${encodeURIComponent(trackingNumber.trim())}`,
+      `${environment.apiUrl}/tracking/${encodeURIComponent(normalizedTrackingNumber)}`,
     );
   }
 }
